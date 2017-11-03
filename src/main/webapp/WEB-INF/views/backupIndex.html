@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>索引快照与恢复</title>
+    <script type="text/javascript" src="../js/jquery-2.0.0.min.js"></script>
+</head>
+<body>
+
+<table>
+    <tr>
+        <td>选择操作类型：</td>
+        <td><select id="operType">
+            <option selected="selected"   value=''>请选择</option>
+            <option value="backups">备份</option>
+            <option value="restore">恢复</option>
+        </select>
+        </td>
+    </tr>
+    <tr>
+        <td>选择集群：</td>
+        <td>
+            <select id="cluster">
+                <option selected="selected"  value=''>请选择</option>
+                <option value="one">集群一</option>
+                <option value="two">集群二</option>
+            </select>
+        </td>
+        <td></td>
+    </tr>
+    <tr style="display:none" id="backupsInfo">
+        <td>备份快照名称（为备份的快照命名）：</td>
+        <td>
+            <input id="snapshotName" type="text" placeholder="请输入要备份的快照名称" style="width:200px"/>
+
+        </td>
+        <td>备份索引名称：</td>
+        <td>
+            <input id="backupsIndex" type="text" placeholder="请输入要备份的索引名称" style="width:200px"/>
+        </td>
+    </tr>
+    <tr style="display:none" id="restoreInfo">
+        <td>选择要恢复的快照名称（版本）：</td>
+        <td>
+            <select id="existSnapshotName"></select>
+        </td>
+        <td>恢复索引名称：</td>
+        <td><input id="restoreIndex" type="text" placeholder="请输入要恢复的索引名称" style="width:200px;"/></td>
+    </tr>
+    <tr style="display:none" id="closeIndex">
+        <td>关闭索引名称（恢复索引前需要先关闭索引）：</td>
+        <td>
+            <input id="closeIndexName" type="text" placeholder="请输入要关闭的索引名称" style="width:200px;"/>
+        </td>
+        <td></td>
+        <td><input id="close" type="button" value="关闭"/></td>
+    </tr>
+    <tr>
+        <td colspan="4"><input type="button"  id="submit" value="执行"/></td>
+    </tr>
+</table>
+<label>注：http://集群地址/_snapshot/my_backup/snapshot_name/_status  此api可查看快照状态</label>
+
+</body>
+</html>
+<script type="text/javascript">
+    var command = "_snapshot/backup" ;//备份仓库位置
+    $(function () {
+        $("#cluster").attr("disabled",true);
+        $("#operType").change(function () {
+            $("#cluster").attr("disabled",false);
+            $("#cluster").val("");
+
+            if (this.value == "backups") {
+                $("#cluster").show();
+                $("#backupsInfo").show();
+                $("#restoreInfo").hide();
+                $("#closeIndex").hide();
+            } else if (this.value == "restore") {
+                $("#cluster").show();
+                $("#backupsInfo").hide();
+                $("#restoreInfo").show();
+                $("#closeIndex").show();
+
+            }else{
+                $("#backupsInfo").hide();
+                $("#restoreInfo").hide();
+                $("#closeIndex").hide();
+            }
+        })
+
+        $("#submit").click(function () {
+            var operType=$("#operType").val();
+            if(operType==""){
+                alert("操作类型不能为空！");
+                return;
+            }
+            if(operType=="backups"){
+                backups();
+            } else if (operType == "restore") {
+                restore();
+            }
+        })
+
+        $("#cluster").change(function () {
+            var operType=$("#operType").val();
+            if(operType==""){
+                alert("操作类型不能为空！");
+                return;
+            }
+            if(operType=="restore"){
+                var cluster=this.value;
+                if(cluster==""){
+                    alert("集群不能为空!");
+                    return;
+                }
+                getAllSnapshot(cluster);
+            }
+        })
+
+        $("#close").click(function(){
+            var res = confirm("确认关闭此索引？");
+            if(res == true){
+                closeIndex();
+            }else{
+            }
+
+        })
+
+    })
+    //    获取集群下的快照
+    function getAllSnapshot(cluster){
+        var url="/backup/getSnapshot";
+        $.ajax({
+            url:url,
+            type:'post',
+            data:{
+                "cluster":cluster
+            },
+            dataType:'json',
+            success:function(data){
+                if(data!=null&&data!=''){
+                    var optionstring="";
+                    for(var i=data.length-1;i>=0;i--){
+                        if(data.length-i>8){//取最新8个版本快照
+                            break;
+                        }
+                        optionstring += "<option value=\"" + data[i] + "\" >" + data[i] + "</option>";
+                    }
+                    $("#existSnapshotName").html("<option value=''>请选择...</option> "+optionstring);
+                    $("#restoreInfo").show();
+                }else{
+                    alert("获取快照版本出错");
+                }
+
+            },
+            error:function(e){
+                alert("获取快照版本出错");
+            }
+        })
+    }
+
+    //    关闭索引
+    function closeIndex(){
+        var cluster=$("#cluster").val();
+        var closeIndexName=$("#closeIndexName").val();
+        if(cluster==""||closeIndexName==""){
+            alert("集群名称、索引名称不能为空！");
+            return;
+        }
+        var url="/backup/closeIndex";
+        $.ajax({
+            url:url,
+            type:'post',
+            data:{
+                "cluster":cluster,
+                "indexName":closeIndexName
+            },
+            dataType:'json',
+            success:function(data){
+                if(data!=null&&data=="SUCCESS")
+                {
+                    alert("执行成功");
+                }else{
+                    alert("未正确执行，请确保索引存在"+data);
+                }
+            },
+            error:function(e){
+                alert("关闭索引出错");
+            }
+        })
+    }
+
+//    备份快照
+    function backups(){
+        var cluster=$("#cluster").val();
+        var snapshotName=$("#snapshotName").val();
+        var indexName=$("#backupsIndex").val();
+        if(cluster==""||snapshotName==""||indexName==""){
+            alert("集群名称、快照版本名称、索引名称不能为空！");
+            return;
+        }
+        var url="/backup/backupIndex";
+        $.ajax({
+            url:url,
+            type:'post',
+            data:{
+                "cluster":cluster,
+                "snapshotName":snapshotName,
+                "indexName":indexName
+            },
+            dataType:'json',
+            success:function(data){
+                if(data!=null&&data=="SUCCESS")
+                {
+                    alert("执行成功");
+                }else{
+                    alert("未正确执行，请确保索引存在"+data);
+                }
+
+            },
+            error:function(e){
+                alert("执行出错");
+            }
+        })
+    }
+
+    //恢复快照索引
+    function restore() {
+        var cluster=$("#cluster").val();
+        var snapshotName=$("#existSnapshotName").val();
+        var indexName=$("#restoreIndex").val();
+        if(cluster==""||snapshotName==""||indexName==""){
+            alert("集群名称、快照版本名称、索引名称不能为空！");
+            return;
+        }
+        var url="/backup/restoreIndex";
+        $.ajax({
+            url:url,
+            type:'post',
+            data:{
+                "cluster":cluster,
+                "snapshotName":snapshotName,
+                "indexName":indexName
+            },
+            dataType:'json',
+            success:function(data){
+                if(data!=null&&data=="SUCCESS")
+                {
+                    alert("执行成功");
+                }else{
+                    alert("未正确执行，请确保索引存在"+data);
+                }
+            },
+            error:function(e){
+                alert("执行出错");
+            }
+        })
+    }
+
+
+</script>
+

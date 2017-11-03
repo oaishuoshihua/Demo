@@ -1,0 +1,8 @@
+
+
+<textarea>
+
+    #foreach($list in $viplist)
+        <span class = "ask">$list</span>
+    #end
+</textarea>
